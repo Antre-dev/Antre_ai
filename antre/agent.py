@@ -2,23 +2,22 @@ import json
 
 from .model import call_model
 from .tools.registry import TOOL_DEFINITIONS, TOOL_FUNCTIONS
+from .prompt import SYSTEM_PROMPT
+
+
+messages = [
+    {
+        "role": "system",
+        "content": SYSTEM_PROMPT
+    }
+]
 
 
 def handle_message(user_input):
-    messages = [
-        {
-            "role": "system",
-            "content": (
-                "You are ANTRE, a personal AI assistant. "
-                "Use available tools when needed. "
-                "Never invent tool results."
-            )
-        },
-        {
-            "role": "user",
-            "content": user_input
-        }
-    ]
+    messages.append({
+        "role": "user",
+        "content": user_input
+    })
 
     response = call_model(
         messages,
@@ -26,7 +25,9 @@ def handle_message(user_input):
     )
 
     if not response.get("tool_calls"):
+        messages.append(response)
         return response["content"]
+
     messages.append(response)
 
     for tool_call in response["tool_calls"]:
@@ -55,5 +56,7 @@ def handle_message(user_input):
         messages,
         tools=TOOL_DEFINITIONS
     )
+
+    messages.append(final_response)
 
     return final_response["content"]

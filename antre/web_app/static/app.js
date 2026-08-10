@@ -7,7 +7,12 @@ function addMessage(text, type) {
     const message = document.createElement("div");
 
     message.classList.add("message", type);
-    message.textContent = text;
+
+    if (type === "assistant") {
+        message.innerHTML = marked.parse(text);
+    } else {
+        message.textContent = text;
+    }
 
     chat.appendChild(message);
 
