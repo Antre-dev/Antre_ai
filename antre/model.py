@@ -1,17 +1,19 @@
-# antre/model.py
-
 import os
+
 import requests
 from dotenv import load_dotenv
 
+
 load_dotenv()
+
 
 API_KEY = os.getenv("Deepseek")
 API_URL = "https://api.deepseek.com/chat/completions"
 
+
 HEADERS = {
     "Content-Type": "application/json",
-    "Authorization": f"Bearer {API_KEY}"
+    "Authorization": f"Bearer {API_KEY}",
 }
 
 
@@ -19,7 +21,7 @@ def call_model(messages, tools=None):
     data = {
         "model": "deepseek-v4-flash",
         "messages": messages,
-        "stream": False
+        "stream": False,
     }
 
     if tools:
@@ -30,7 +32,7 @@ def call_model(messages, tools=None):
         API_URL,
         headers=HEADERS,
         json=data,
-        timeout=60
+        timeout=60,
     )
 
     response.raise_for_status()

@@ -1,46 +1,81 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ANTRE — Interface</title>
 
-    <title>Antre</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;900&family=Share+Tech+Mono&display=swap"
+        rel="stylesheet">
 
-    <link rel="stylesheet" href="/static/styles.css">x
+    <link rel="stylesheet" href="/static/styles.css">
 </head>
 
 <body>
 
+    <!-- HUD scanline overlay -->
+    <div class="scanlines"></div>
+    <div class="vignette"></div>
+
     <main class="app">
 
+        <!-- Decorative HUD corners -->
+        <span class="corner corner-tl"></span>
+        <span class="corner corner-tr"></span>
+        <span class="corner corner-bl"></span>
+        <span class="corner corner-br"></span>
+
         <header>
-            <h1>ANTRE</h1>
-            <span>Online</span>
+            <div class="brand">
+                <div class="logo">
+                    <span class="ring"></span>
+                    <span class="ring-inner"></span>
+                    <span class="ring-core"></span>
+                </div>
+                <h1>ANTRE</h1>
+                <span class="cursor-blink">▌</span>
+            </div>
+            <div class="status">
+                <span class="status-dot"></span>
+                <span class="status-text">SYSTEM ONLINE</span>
+            </div>
         </header>
 
         <section id="chat" class="chat">
+            <div class="boot-line">> initializing neural interface...</div>
             <div class="message assistant">
-                ANTRE online.
+                <span class="msg-tag">ANTRE</span>
+                ANTRE online. Awaiting command, sir.
             </div>
         </section>
 
-        <form id="chat-form" class="input-area">
-            <input
-                id="message-input"
-                type="text"
-                placeholder="Message ANTRE..."
-                autocomplete="off"
-            >
+        <!-- Typing indicator -->
+        <div id="typing" class="typing hidden">
+            <div class="waveform">
+                <span></span><span></span><span></span><span></span><span></span><span></span>
+            </div>
+            <span class="typing-text">ANTRE is listening...</span>
+        </div>
 
-            <button type="submit">
-                Send
+        <form id="chat-form" class="input-area">
+            <span class="input-caret">&gt;</span>
+            <input id="message-input" type="text" placeholder="Type your command..." autocomplete="off">
+            <button type="submit" aria-label="Send">
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.5"
+                    stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M5 12h14M13 6l6 6-6 6" />
+                </svg>
+                <span>TRANSMIT</span>
             </button>
         </form>
 
     </main>
 
-<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
-<script src="/static/app.js"></script>
-
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script src="/static/app.js"></script>
 </body>
+
 </html>

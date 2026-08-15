@@ -34,7 +34,7 @@ async def home(request: Request):
 
 @app.post("/chat")
 async def chat(data: ChatRequest):
-    response = handle_message(data.message)
+    response = await handle_message(data.message)
 
     return {
         "response": response
