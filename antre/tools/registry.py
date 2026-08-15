@@ -1,6 +1,7 @@
-
 from .system.get_time import get_time
 from .web.search_web import search_web, browse_web
+from .system.memory import memory_save, memory_recall
+
 
 TOOL_DEFINITIONS = [
     {
@@ -10,9 +11,9 @@ TOOL_DEFINITIONS = [
             "description": "Get the current local time.",
             "parameters": {
                 "type": "object",
-                "properties": {}
-            }
-        }
+                "properties": {},
+            },
+        },
     },
     {
         "type": "function",
@@ -28,16 +29,16 @@ TOOL_DEFINITIONS = [
                 "properties": {
                     "query": {
                         "type": "string",
-                        "description": "The web search query"
+                        "description": "The web search query",
                     },
                     "max_results": {
                         "type": "integer",
-                        "description": "Maximum number of search results"
-                    }
+                        "description": "Maximum number of search results",
+                    },
                 },
-                "required": ["query"]
-            }
-        }
+                "required": ["query"],
+            },
+        },
     },
     {
         "type": "function",
@@ -56,35 +57,100 @@ TOOL_DEFINITIONS = [
                 "properties": {
                     "action": {
                         "type": "string",
-                        "enum": ["goto", "click", "type", "extract", "links", "screenshot", "close"],
-                        "description": "The browser action to perform"
+                        "enum": [
+                            "goto",
+                            "click",
+                            "type",
+                            "extract",
+                            "links",
+                            "screenshot",
+                            "close",
+                        ],
+                        "description": "The browser action to perform",
                     },
                     "url": {
                         "type": "string",
-                        "description": "URL to navigate to (goto) or output path (screenshot)"
+                        "description": (
+                            "URL to navigate to (goto) or output "
+                            "path (screenshot)"
+                        ),
                     },
                     "selector": {
                         "type": "string",
-                        "description": "CSS selector or XPath of the element (click, type)"
+                        "description": (
+                            "CSS selector or XPath of the element "
+                            "(click, type)"
+                        ),
                     },
                     "text": {
                         "type": "string",
-                        "description": "Text to type into a field (type)"
+                        "description": "Text to type into a field (type)",
                     },
                     "max_content": {
                         "type": "integer",
                         "description": "Max characters of page text to return",
-                        "default": 8000
-                    }
+                        "default": 8000,
+                    },
                 },
-                "required": ["action"]
-            }
-        }
-    }
+                "required": ["action"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "memory_save",
+            "description": (
+                "Save an important fact, preference, or decision to "
+                "long-term memory so it can be recalled in future sessions."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "text": {
+                        "type": "string",
+                        "description": "The fact or information to remember",
+                    },
+                    "tags": {
+                        "type": "string",
+                        "description": "Comma-separated keywords for retrieval",
+                    },
+                },
+                "required": ["text"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "memory_recall",
+            "description": (
+                "Search long-term memory for information saved in past "
+                "conversations or sessions."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "Keywords to search for",
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "description": "Max entries to return",
+                    },
+                },
+                "required": ["query"],
+            },
+        },
+    },
 ]
+
 
 TOOL_FUNCTIONS = {
     "get_time": get_time,
     "search_web": search_web,
-    "browse_web": browse_web
+    "browse_web": browse_web,
+    "memory_save": memory_save,
+    "memory_recall": memory_recall,
 }
