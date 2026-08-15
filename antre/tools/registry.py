@@ -1,7 +1,8 @@
 from .system.get_time import get_time
 from .web.search_web import search_web, browse_web
 from .system.memory import memory_save, memory_recall
-
+from antre.tools.system.ssh import run_ssh
+from antre.tools.system.file_edit import file_read, file_write
 
 TOOL_DEFINITIONS = [
     {
@@ -144,6 +145,61 @@ TOOL_DEFINITIONS = [
             },
         },
     },
+    {
+    "type": "function",
+    "function": {
+        "name": "run_ssh",
+        "description": "Run a command on a remote host over SSH (e.g. the homelab server). Requires user approval.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "host":    {"type": "string", "description": "Remote host IP or hostname"},
+                "command": {"type": "string", "description": "Shell command to execute"},
+                "user":    {"type": "string", "description": "SSH username", "default": "ubuntu"},
+                "port":    {"type": "integer", "description": "SSH port", "default": 22},
+            },
+            "required": ["host", "command"],
+        },
+    },
+},
+    {
+    "type": "function",
+    "function": {
+        "name": "file_read",
+        "description": (
+            "Read a text file (relative to the project root) or list a directory. "
+            "Safer than cat: paths resolve inside the project, .env is blocked."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "path": {"type": "string", "description": "File path, relative to project root"},
+                "limit": {"type": "integer", "description": "Show only the first N lines (0 = all)", "default": 0},
+            },
+            "required": ["path"],
+        },
+    },
+    },
+    {
+    "type": "function",
+    "function": {
+        "name": "file_write",
+        "description": (
+            "Write or append to a file inside the project. Snapshots a timestamped .bak "
+            "first. dry_run=True previews a diff without writing. .env is blocked."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "path": {"type": "string", "description": "File path, relative to project root"},
+                "content": {"type": "string", "description": "Full new content (write) or text to add (append)"},
+                "action": {"type": "string", "enum": ["write", "append"], "description": "Replace or append", "default": "write"},
+                "dry_run": {"type": "boolean", "description": "Preview the change as a diff without writing", "default": False},
+            },
+            "required": ["path", "content"],
+        },
+    },
+    },
 ]
 
 
@@ -153,4 +209,7 @@ TOOL_FUNCTIONS = {
     "browse_web": browse_web,
     "memory_save": memory_save,
     "memory_recall": memory_recall,
+    "run_ssh": run_ssh,
+    "file_read": file_read,
+    "file_write": file_write,
 }

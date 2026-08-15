@@ -7,7 +7,8 @@ def main():
     subprocess.run([
         "uvicorn",
         "antre.web_app.app:app",
-        "--reload"
+        "--reload",
+        "--host", "0.0.0.0",
     ])
 
 
