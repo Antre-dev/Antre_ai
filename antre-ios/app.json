@@ -14,12 +14,23 @@
       }
     },
     "android": {
-      "package": "com.antre.remote"
+      "package": "com.antre.remote",
+      "permissions": [
+        "android.permission.USE_BIOMETRIC",
+        "android.permission.USE_FINGERPRINT"
+      ]
     },
     "plugins": [
       "expo-router",
       "expo-local-authentication",
       "expo-secure-store"
-    ]
+    ],
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "30fd9962-652c-452c-b206-314ebb21d94d"
+      }
+    },
+    "owner": "antredev"
   }
 }
