@@ -1,7 +1,12 @@
 name: Build IPA
 
-# Builds the iOS companion app (antre-ios/) on EAS cloud and uploads the
-# resulting .ipa as a run artifact, ready to sideload with SideStore.
+# Builds the iOS companion app (antre-ios/) as an *unsigned* .ipa on a
+# macOS GitHub runner, then uploads it as a run artifact, ready to
+# sideload with SideStore (which re-signs it on-device with your free
+# Apple ID on install).
+#
+# No Apple Developer account, no EAS, no signing credentials required.
+# This is the same approach that worked for the CYD Rider app.
 #
 # Trigger it manually from the Actions tab, or it runs on push to main
 # when anything under antre-ios/ changes.
@@ -12,58 +17,140 @@ on:
     branches: [main]
     paths: ['antre-ios/**']
 
+permissions:
+  contents: read
+
 jobs:
-  build:
-    runs-on: ubuntu-latest
+  build-ios:
+    runs-on: macos-26
+    timeout-minutes: 60
+
+    env:
+      CI: "1"
+      EXPO_NO_GIT_STATUS: "1"
+      EXPO_NO_TELEMETRY: "1"
+      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+
     defaults:
       run:
+        shell: bash
         working-directory: antre-ios
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
 
-      - name: Setup Node
-        uses: actions/setup-node@v4
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v6
+
+      - name: Use Node 22
+        uses: actions/setup-node@v6
         with:
-          node-version: 20
+          node-version: 22.23.1
           cache: npm
           cache-dependency-path: antre-ios/package-lock.json
 
-      - name: Install dependencies
+      - name: Show build tools
+        run: |
+          node --version
+          npm --version
+          xcodebuild -version
+          pod --version
+
+      - name: Install JavaScript dependencies
         run: npm ci
 
-      - name: Setup Expo / EAS
-        uses: expo/expo-github-action@v8
-        with:
-          eas-version: latest
-          token: ${{ secrets.EXPO_TOKEN }}
+      - name: Type-check app
+        run: npm run typecheck
 
-      - name: EAS build (preview profile -> .ipa)
-        run: eas build --platform ios --profile preview --non-interactive --no-wait
+      - name: Generate native iOS project
+        run: npx expo prebuild --platform ios --clean --no-install
 
-      - name: Get artifact URL
+      - name: Install iOS pods
+        run: pod install
+        working-directory: antre-ios/ios
+
+      - name: Detect scheme and validate workspace
         run: |
-          URL=$(eas build:list --platform ios --profile preview --limit 1 \
-            --non-interactive --json | jq -r '.[0].artifacts.buildUrl // empty')
-          if [ -n "$URL" ]; then
-            echo "IPA_URL=$URL" >> $GITHUB_ENV
-            echo "### 📦 Download your .ipa" >> $GITHUB_STEP_SUMMARY
-            echo "\`$URL\`" >> $GITHUB_STEP_SUMMARY
-            echo "Install it with SideStore on your iPhone." >> $GITHUB_STEP_SUMMARY
-          else
-            echo "No artifact URL yet — EAS is probably still building. Check the EAS dashboard: https://expo.dev/accounts"
+          workspace="$(find ios -maxdepth 1 -name '*.xcworkspace' -print -quit)"
+          if [[ -z "$workspace" ]]; then
+            echo "No Xcode workspace was generated."
+            exit 1
           fi
 
-      - name: Download and attach the .ipa to this run
-        run: |
-          if [ -n "$IPA_URL" ]; then
-            curl -sL "$IPA_URL" -o antre-remote.ipa
-            echo "saved $(ls -lh antre-remote.ipa | awk '{print $5}')"
+          xcodebuild -workspace "$workspace" -list -json \
+            | tee "$RUNNER_TEMP/xcode-schemes.json"
+
+          scheme="$(jq -r '.workspace.schemes[]' "$RUNNER_TEMP/xcode-schemes.json" \
+            | grep -v '^Pods$' | head -n1)"
+          if [[ -z "$scheme" ]]; then
+            echo "No app scheme found in workspace."
+            exit 1
           fi
 
-      - name: Upload IPA artifact
-        uses: actions/upload-artifact@v4
+          echo "Using scheme: $scheme"
+          printf 'IOS_WORKSPACE=%s\n' "$workspace" >> "$GITHUB_ENV"
+          printf 'IOS_SCHEME=%s\n' "$scheme" >> "$GITHUB_ENV"
+
+      - name: Build unsigned iPhone app
+        run: |
+          derived_data="$RUNNER_TEMP/DerivedData"
+
+          xcodebuild \
+            -workspace "$IOS_WORKSPACE" \
+            -scheme "$IOS_SCHEME" \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination "generic/platform=iOS" \
+            -derivedDataPath "$derived_data" \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            DEVELOPMENT_TEAM="" \
+            PROVISIONING_PROFILE="" \
+            PROVISIONING_PROFILE_SPECIFIER="" \
+            clean build
+
+          apps=("$derived_data"/Build/Products/Release-iphoneos/*.app)
+          if [[ ${#apps[@]} -ne 1 || ! -d "${apps[0]}" ]]; then
+            echo "Expected one Release-iphoneos app."
+            find "$derived_data/Build/Products" -maxdepth 3 -name '*.app' -print
+            exit 1
+          fi
+
+          app_path="${apps[0]}"
+          test -f "$app_path/main.jsbundle"
+          test ! -e "$app_path/embedded.mobileprovision"
+          test ! -d "$app_path/_CodeSignature"
+
+          if codesign -d "$app_path" >/dev/null 2>&1; then
+            echo "The output was unexpectedly signed."
+            exit 1
+          fi
+
+          printf 'APP_PATH=%s\n' "$app_path" >> "$GITHUB_ENV"
+
+      - name: Package unsigned IPA
+        run: |
+          package_root="$RUNNER_TEMP/ipa-root"
+          ipa="$RUNNER_TEMP/antre-remote-unsigned.ipa"
+
+          mkdir -p "$package_root/Payload"
+          /usr/bin/ditto \
+            "$APP_PATH" \
+            "$package_root/Payload/$(basename "$APP_PATH")"
+
+          (
+            cd "$package_root"
+            /usr/bin/ditto -c -k --keepParent Payload "$ipa"
+          )
+
+          /usr/bin/unzip -t "$ipa"
+          /usr/bin/unzip -Z1 "$ipa" \
+            | grep -Eq '^Payload/[^/]+\.app/Info\.plist$'
+          shasum -a 256 "$ipa"
+
+      - name: Upload IPA
+        uses: actions/upload-artifact@v7
         with:
-          name: antre-remote-ipa
-          path: antre-ios/antre-remote.ipa
-          if-no-files-found: warn
+          name: antre-remote-unsigned-ipa
+          path: ${{ runner.temp }}/antre-remote-unsigned.ipa
+          if-no-files-found: error
+          retention-days: 14
