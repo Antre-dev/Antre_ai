@@ -141,3 +141,19 @@ FastAPI. Mounts `/static`, serves `index.html` at `/`, and exposes `POST /chat` 
 - `.env` holds the API keys and it is intentionally never read by me — that's the one rule I don't break, even when asked. (It's in .gitignore too, so it won't leak through git.)
 
 That's the whole thing. It's not a huge codebase — it's a personal assistant that does just enough: a chat UI, an LLM, a handful of tools, a permission system so it can't blow anything up without asking, and memory so it doesn't forget you between sessions. And now it's documented, in the voice of someone who actually wrote it.
+
+
+
+## Fullscreen launch + JARVIS boot screen
+
+- **Boot sequence:** `antre/web_app/templates/index.html` shows a fullscreen JARVIS-style
+  boot overlay (orbiting rings, typed system checks, live stats from `/api/status`,
+  progress bar) before fading into the chat interface. Logic in
+  `antre/web_app/static/boot.js`, styling in `styles.css`.
+- **Skip it in dev:** open `http://localhost:8000/?skip_boot=1`. The boot replays on
+  every fresh browser session (kiosk relaunch), not on normal reloads.
+- **Fullscreen launcher:** `./launch.sh` starts the core server if it isn't already
+  running, waits for readiness, then opens the interface fullscreen (kiosk mode) in
+  Chromium/Chrome/Edge/Brave/Firefox. Closing the browser stops the server it started.
+  Overrides: `ANTRE_HOST`, `ANTRE_PORT`. Make it executable once:
+  `chmod +x launch.sh`.

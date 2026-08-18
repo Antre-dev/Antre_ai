@@ -1,11 +1,20 @@
 import asyncio
 import inspect
 import json
+import os
+import time
 
 from .model import call_model
 from .tools.registry import TOOL_DEFINITIONS, TOOL_FUNCTIONS
 from .prompt import SYSTEM_PROMPT
 from .permissions import PermissionRequired, check, grant
+from .activity import (
+    log_tool_start,
+    log_tool_done,
+    log_permission,
+    log_cancel,
+    log_chat,
+)
 
 
 # ============================================================
@@ -61,6 +70,10 @@ except ImportError:
 
 history = []
 summary = ""
+
+# Images (screenshots) produced during the current turn, collected so
+# the web frontend can render them in chat.
+_turn_images = []
 
 # Holds state while we're waiting on a user's yes/no for a
 # permission-gated tool call. None when nothing is pending.
@@ -267,19 +280,42 @@ async def _execute_tool(tool_call):
             "error": f"Unknown tool: {tool_name}",
         }
 
+    log_tool_start(tool_name, arguments)
+    started = time.time()
+
     try:
         result = function(**arguments)
 
         if inspect.isawaitable(result):
             result = await result
 
+        img = _result_image(result)
+        if img:
+            _turn_images.append(img)
+
+        log_tool_done(tool_name, arguments, result, started)
         return result
 
     except Exception as e:
-        return {
+        result = {
             "success": False,
             "error": str(e),
         }
+        log_tool_done(tool_name, arguments, result, started)
+        return result
+
+
+def _result_image(result) -> str | None:
+    """Best-effort screenshot URL from a tool result dict."""
+    if not isinstance(result, dict):
+        return None
+    url = result.get("screenshot_url")
+    if url:
+        return url
+    path = result.get("screenshot")
+    if path:
+        return "/screenshots/" + os.path.basename(str(path))
+    return None
 
 
 def _append_tool_result(messages, tool_call, result) -> None:
@@ -326,6 +362,7 @@ async def _run_tool_calls(tool_calls, messages):
         try:
             check(tool_name, arguments)
         except PermissionRequired as e:
+            log_permission(tool_name, arguments, str(e))
             return {
                 "tool_call": tool_call,
                 "tool_name": tool_name,
@@ -404,10 +441,12 @@ async def handle_message(user_input: str) -> str:
 
         if user_input.strip().lower() not in APPROVE_WORDS:
             reply = "Understood — I cancelled that command."
+            log_cancel(pending["tool_name"], pending["args"])
+            log_chat("assistant", reply)
             history.append({"role": "user", "content": original_input})
             history.append({"role": "assistant", "content": reply})
             _make_room()
-            return reply
+            return reply, list(_turn_images)
 
         grant(pending["tool_name"], pending["args"])
         result = await _execute_tool(pending["tool_call"])
@@ -423,7 +462,7 @@ async def handle_message(user_input: str) -> str:
             }
             return _permission_prompt(
                 remaining_pending["tool_name"], remaining_pending["args"]
-            )
+            ), list(_turn_images)
 
         response, new_pending = await _agent_loop(messages)
 
@@ -433,13 +472,15 @@ async def handle_message(user_input: str) -> str:
                 "user_input": original_input,
                 **new_pending,
             }
-            return _permission_prompt(new_pending["tool_name"], new_pending["args"])
+            return _permission_prompt(new_pending["tool_name"], new_pending["args"]), list(_turn_images)
 
     # --------------------------------------------------------
     # Normal flow
     # --------------------------------------------------------
     else:
         original_input = user_input
+        _turn_images.clear()
+        log_chat("user", user_input)
 
         # Make room BEFORE adding the new message.
         _make_room(incoming=count_tokens(user_input) + 1_000)
@@ -475,7 +516,7 @@ async def handle_message(user_input: str) -> str:
                 "user_input": original_input,
                 **pending,
             }
-            return _permission_prompt(pending["tool_name"], pending["args"])
+            return _permission_prompt(pending["tool_name"], pending["args"]), list(_turn_images)
 
     # --------------------------------------------------------
     # Persist compact conversation
@@ -493,7 +534,9 @@ async def handle_message(user_input: str) -> str:
         "content": reply,
     })
 
+    log_chat("assistant", reply)
+
     # Make sure persistent history doesn't grow forever.
     _make_room()
 
-    return reply
+    return reply, list(_turn_images)

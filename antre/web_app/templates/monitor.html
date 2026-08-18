@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ANTRE — Monitor</title>
+
+    <!-- Anti-FOUC: same treatment as the chat page — keep the shell dark
+         and hide raw HTML until the stylesheet has loaded. -->
+    <style>
+        html { background: #04070d; }
+        body { visibility: hidden; background: #04070d; color: #eaf7ff; }
+        html.css-ready body { visibility: visible; }
+    </style>
+
+    <link rel="stylesheet" href="/static/styles.css">
+
+    <!-- Reveal the page once the stylesheet has landed (script sits after
+         the link so it can find it). Fail-safe: never leave the page blank. -->
+    <script>
+        (function () {
+            var link = document.querySelector('link[href="/static/styles.css"]');
+            var reveal = function () { document.documentElement.classList.add("css-ready"); };
+            if (!link) { reveal(); return; }
+            var loaded = false;
+            try { loaded = !!link.sheet && !!link.sheet.cssRules; } catch (e) { loaded = true; }
+            if (loaded) {
+                reveal();
+            } else {
+                link.addEventListener("load", reveal);
+                setTimeout(reveal, 3000);
+            }
+        })();
+    </script>
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;900&family=Share+Tech+Mono&display=swap"
+        rel="stylesheet">
+</head>
+
+<body class="monitor-body">
+
+    <div class="scanlines"></div>
+    <div class="vignette"></div>
+
+    <main class="monitor">
+
+        <span class="corner corner-tl"></span>
+        <span class="corner corner-tr"></span>
+        <span class="corner corner-bl"></span>
+        <span class="corner corner-br"></span>
+
+        <nav class="topnav">
+            <a href="/" target="_blank" rel="noopener" class="nav-link">CHAT</a>
+            <a href="/monitor" class="nav-link active">MONITOR</a>
+            <span class="nav-spacer"></span>
+            <span id="m-status" class="nav-status">
+                <span class="status-dot"></span>
+                <span class="status-text">LINKING...</span>
+            </span>
+        </nav>
+
+        <header class="monitor-header">
+            <div class="monitor-title">
+                <span class="monitor-pulse">●</span>
+                <h1>LIVE ACTIVITY FEED</h1>
+            </div>
+            <div class="monitor-controls">
+                <div class="filter-bar" id="filter-bar">
+                    <button class="filter active" data-filter="all">ALL</button>
+                    <button class="filter" data-filter="terminal">TERMINAL</button>
+                    <button class="filter" data-filter="browser">BROWSER</button>
+                    <button class="filter" data-filter="files">FILES</button>
+                    <button class="filter" data-filter="memory">MEMORY</button>
+                    <button class="filter" data-filter="search">SEARCH</button>
+                    <button class="filter" data-filter="chat">CHAT</button>
+                    <button class="filter" data-filter="system">SYSTEM</button>
+                </div>
+                <div class="monitor-actions">
+                    <label class="scroll-toggle">
+                        <input type="checkbox" id="auto-scroll" checked>
+                        <span>FOLLOW</span>
+                    </label>
+                    <button id="clear-feed" class="ghost-btn">CLEAR</button>
+                </div>
+            </div>
+        </header>
+
+        <div class="monitor-layout">
+
+            <!-- Stats sidebar -->
+            <aside class="stats-panel">
+                <div class="stat-block">
+                    <span class="stat-label">STATUS</span>
+                    <span id="stat-status" class="stat-value stat-idle">IDLE</span>
+                </div>
+                <div class="stat-block">
+                    <span class="stat-label">MODE</span>
+                    <span id="stat-mode" class="stat-value stat-idle">SAFE</span>
+                </div>
+                <div class="stat-block">
+                    <span class="stat-label">UPTIME</span>
+                    <span id="stat-uptime" class="stat-value">--</span>
+                </div>
+                <div class="stat-block">
+                    <span class="stat-label">EVENTS</span>
+                    <span id="stat-events" class="stat-value">0</span>
+                </div>
+                <div class="stat-block">
+                    <span class="stat-label">HISTORY MSGS</span>
+                    <span id="stat-history" class="stat-value">0</span>
+                </div>
+                <div class="stat-block">
+                    <span class="stat-label">MEMORY</span>
+                    <span id="stat-memory" class="stat-value">0</span>
+                </div>
+                <div class="stat-block">
+                    <span class="stat-label">SCREENSHOTS</span>
+                    <span id="stat-shots" class="stat-value">0</span>
+                </div>
+                <div class="stat-block category-counts">
+                    <span class="stat-label">CATEGORIES</span>
+                    <div id="category-counts"></div>
+                </div>
+            </aside>
+
+            <!-- Live feed -->
+            <section id="feed" class="feed">
+                <div class="feed-empty" id="feed-empty">
+                    &gt; waiting for activity...<br>
+                    &gt; open the CHAT tab and give Antre a command.
+                </div>
+            </section>
+
+        </div>
+
+    </main>
+
+    <script src="/static/monitor.js"></script>
+</body>
+
+</html>

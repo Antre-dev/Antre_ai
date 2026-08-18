@@ -97,6 +97,13 @@ async def _page_text(page, max_chars: int):
     )
 
 
+def _screenshot_path() -> str:
+    """Unique timestamped path inside the web-served screenshots dir."""
+    import time as _t
+    stamp = _t.strftime("%Y%m%d_%H%M%S")
+    return f"screenshots/browse_{stamp}.png"
+
+
 async def browse_web(
     action: str,
     url: str = None,
@@ -275,7 +282,14 @@ async def browse_web(
 
         elif action == "screenshot":
 
-            output_path = url or "screenshot.png"
+            if url:
+                # Normalize any user-supplied output path into the
+                # web-served screenshots dir so the UI can display it.
+                out_name = os.path.basename(str(url)) or _screenshot_path()
+            else:
+                out_name = _screenshot_path()
+
+            output_path = os.path.join("screenshots", out_name)
 
             await page.screenshot(
                 path=output_path,
@@ -285,6 +299,7 @@ async def browse_web(
             return {
                 "success": True,
                 "screenshot": output_path,
+                "screenshot_url": "/screenshots/" + os.path.basename(output_path),
             }
 
         # ====================================================

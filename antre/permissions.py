@@ -1,3 +1,15 @@
+"""
+Permission policy and the user-approval gate.
+
+Tools are classified by danger level. By default anything at or above
+AUTO_CONFIRM_THRESHOLD (or explicitly flagged) requires the user to
+approve before it runs.
+
+AUTO MODE relaxes this: with auto mode enabled, every tool below
+CRITICAL danger runs automatically — file edits, web browsing, searches,
+memory ops — while anything that can genuinely break the machine (SSH
+command execution, destructive ops) still stops and asks first.
+"""
 
 from __future__ import annotations
 
@@ -35,6 +47,31 @@ AUTO_CONFIRM_THRESHOLD = DangerLevel.HIGH
 
 # How long a granted approval stays valid (seconds).
 APPROVAL_TTL = 300  # 5 minutes
+
+
+# ============================================================
+# AUTO MODE
+# ============================================================
+
+# In auto mode, tools BELOW this level run without asking.
+AUTO_MODE_THRESHOLD = DangerLevel.CRITICAL
+
+# Even in auto mode, these tools always stop and ask.
+# run_ssh = arbitrary remote command execution → always confirm.
+AUTO_MODE_ALWAYS_CONFIRM = {"run_ssh"}
+
+_auto_mode = False
+
+
+def auto_mode() -> bool:
+    """Is auto mode currently enabled?"""
+    return _auto_mode
+
+
+def set_auto_mode(on: bool) -> None:
+    """Enable or disable auto mode."""
+    global _auto_mode
+    _auto_mode = bool(on)
 
 
 class PermissionRequired(Exception):
@@ -87,8 +124,21 @@ def requires_approval(tool_name: str, args: dict | None = None) -> bool:
 
 def check(tool_name: str, args: dict | None = None) -> None:
     """Gate a tool call. Raises PermissionRequired if the user must confirm.
-    Already-approved calls (same tool + args, within TTL) pass silently."""
+
+    AUTO MODE: anything below CRITICAL danger (and not in the
+    always-confirm list) is auto-approved — no prompt. Only genuinely
+    dangerous calls still stop and ask.
+
+    Already-approved calls (same tool + args, within TTL) pass silently.
+    """
     args = args or {}
+
+    # Auto mode bypass for everything that can't break the machine.
+    if auto_mode() and tool_name not in AUTO_MODE_ALWAYS_CONFIRM:
+        level, _explicit = get_policy(tool_name)
+        if level < AUTO_MODE_THRESHOLD:
+            return
+
     if requires_approval(tool_name, args) and not approval_store.is_approved(tool_name, args):
         raise PermissionRequired(
             f"Tool '{tool_name}' needs confirmation. Args: {args}"

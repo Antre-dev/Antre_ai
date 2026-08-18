@@ -2,80 +2,263 @@
 <html lang="en">
 
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ANTRE — Interface</title>
+ <meta charset="UTF-8">
+ <meta name="viewport" content="width=device-width, initial-scale=1.0">
+ <title>ANTRE — Interface</title>
 
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;900&family=Share+Tech+Mono&display=swap"
-        rel="stylesheet">
+ <!-- Anti-FOUC: paint the shell dark instantly and keep the raw HTML
+      hidden until /static/styles.css has actually loaded, so the user
+      never sees a flash of unstyled content. -->
+ <style>
+  html { background: #04070d; }
+  body { visibility: hidden; background: #04070d; color: #eaf7ff; }
+  html.css-ready body { visibility: visible; }
+ </style>
 
-    <link rel="stylesheet" href="/static/styles.css">
+ <!-- Local stylesheet first so it is never starved by the font CSS -->
+ <link rel="stylesheet" href="/static/styles.css">
+
+ <!-- Reveal the page once the stylesheet has landed (script sits after
+      the link so it can find it). Fail-safe: never leave the page blank. -->
+ <script>
+  (function () {
+   var link = document.querySelector('link[href="/static/styles.css"]');
+   var reveal = function () { document.documentElement.classList.add("css-ready"); };
+   if (!link) { reveal(); return; }
+   var loaded = false;
+   try { loaded = !!link.sheet && !!link.sheet.cssRules; } catch (e) { loaded = true; }
+   if (loaded) {
+    reveal();
+   } else {
+    link.addEventListener("load", reveal);
+    setTimeout(reveal, 3000); // fail-safe
+   }
+  })();
+ </script>
+
+ <link rel="preconnect" href="https://fonts.googleapis.com">
+ <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+ <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;900&family=Share+Tech+Mono&display=swap"
+  rel="stylesheet">
 </head>
 
 <body>
 
-    <!-- HUD scanline overlay -->
-    <div class="scanlines"></div>
-    <div class="vignette"></div>
+ <!-- ==========================================================
+      JARVIS-style boot sequence (fullscreen, fades into the app)
+      Skip it with: /?skip_boot=1
+      ========================================================== -->
+ <div id="boot" class="boot">
+  <div class="boot-inner">
+   <div class="boot-orbit">
+    <span class="orbit-ring r1">
+     <span class="orbit-sat s1"></span>
+     <span class="orbit-sat s2"></span>
+     <span class="orbit-sat s3"></span>
+    </span>
+    <span class="orbit-ring r2"></span>
+    <span class="orbit-ring r3"></span>
+    <span class="orbit-ring r4"></span>
+    <span class="orbit-core"></span>
+   </div>
+   <h1 class="boot-title">ANTRE<span class="boot-dot">.</span></h1>
+   <p class="boot-sub">OPERATIVE SYSTEM &middot; BUILD 0.1</p>
+   <div class="boot-log" id="boot-log"></div>
+   <div class="boot-bar"><div class="boot-bar-fill" id="boot-bar-fill"></div></div>
+   <div class="boot-meta">
+    <span id="boot-pct">0%</span>
+    <span class="boot-status" id="boot-status">INITIALIZING</span>
+   </div>
+  </div>
+  <div class="boot-foot">ANTRE CORE &middot; DO NOT INTERRUPT</div>
+ </div>
 
-    <main class="app">
+ <!-- HUD scanline overlay -->
+ <div class="scanlines"></div>
+ <div class="vignette"></div>
 
-        <!-- Decorative HUD corners -->
-        <span class="corner corner-tl"></span>
-        <span class="corner corner-tr"></span>
-        <span class="corner corner-bl"></span>
-        <span class="corner corner-br"></span>
+ <main class="app">
 
-        <header>
-            <div class="brand">
-                <div class="logo">
-                    <span class="ring"></span>
-                    <span class="ring-inner"></span>
-                    <span class="ring-core"></span>
-                </div>
-                <h1>ANTRE</h1>
-                <span class="cursor-blink">▌</span>
-            </div>
-            <div class="status">
-                <span class="status-dot"></span>
-                <span class="status-text">SYSTEM ONLINE</span>
-            </div>
-        </header>
+  <!-- Decorative HUD corners -->
+  <span class="corner corner-tl"></span>
+  <span class="corner corner-tr"></span>
+  <span class="corner corner-bl"></span>
+  <span class="corner corner-br"></span>
 
-        <section id="chat" class="chat">
-            <div class="boot-line">> initializing neural interface...</div>
-            <div class="message assistant">
-                <span class="msg-tag">ANTRE</span>
-                ANTRE online. Awaiting command, sir.
-            </div>
-        </section>
+  <!-- Top navigation -->
+  <nav class="topnav">
+   <a href="/" class="nav-link active">CONSOLE</a>
+   <a href="/monitor" target="_blank" rel="noopener" class="nav-link monitor-link">
+    MONITOR <span class="nav-external">↗</span>
+   </a>
+   <span class="nav-spacer"></span>
+      <button id="voice-toggle" class="voice-toggle" type="button"
+    title="VOICE: ANTRE speaks replies aloud via edge-tts neural voices.">
+    <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5 6 9H2v6h4l5 4V5z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M18.5 5.5a9 9 0 0 1 0 13"/></svg>
+    <span class="voice-label">VOICE OFF</span>
+   </button>
+   <button id="mode-toggle" class="mode-toggle" type="button"
+    title="AUTO MODE: file edits, web browsing, searches and memory ops run without asking. Dangerous operations (SSH, destructive commands) still require your approval.">
+    <span class="mode-dot"></span>
+    <span class="mode-label">AUTO OFF</span>
+   </button>
+   <span id="nav-status" class="nav-status">
+    <span class="status-dot"></span>
+    <span class="status-text">SYSTEM ONLINE</span>
+   </span>
+  </nav>
 
-        <!-- Typing indicator -->
-        <div id="typing" class="typing hidden">
-            <div class="waveform">
-                <span></span><span></span><span></span><span></span><span></span><span></span>
-            </div>
-            <span class="typing-text">ANTRE is listening...</span>
-        </div>
+  <header>
+   <div class="brand">
+    <div class="logo">
+     <span class="ring"></span>
+     <span class="ring-inner"></span>
+     <span class="ring-core"></span>
+    </div>
+    <h1>ANTRE</h1>
+    <span class="cursor-blink">▌</span>
+   </div>
+  </header>
 
-        <form id="chat-form" class="input-area">
-            <span class="input-caret">&gt;</span>
-            <input id="message-input" type="text" placeholder="Type your command..." autocomplete="off">
-            <button type="submit" aria-label="Send">
-                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.5"
-                    stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M5 12h14M13 6l6 6-6 6" />
-                </svg>
-                <span>TRANSMIT</span>
-            </button>
-        </form>
+  <!-- Central stage — no chat log. ANTRE speaks replies aloud and
+       surfaces important things as popups; this shows the last line. -->
+  <main class="stage">
+   <div class="stage-core" id="stage-core" aria-hidden="true">
+    <span class="sc-ring sr1"></span>
+    <span class="sc-ring sr2"></span>
+    <span class="sc-ring sr3"></span>
+    <span class="sc-ring sr4"></span>
+    <span class="sc-core"></span>
+    <span class="sc-ring sr5"></span>
+   </div>
+   <div class="status-line" id="status-line">
+    <span class="sl-tag">ANTRE</span>
+    <span class="sl-text" id="status-text">ONLINE — AWAITING INPUT</span>
+   </div>
+  </main>
 
-    </main>
+  <!-- Typing indicator -->
+  <div id="typing" class="typing hidden">
+   <div class="waveform">
+    <span></span><span></span><span></span><span></span><span></span><span></span>
+   </div>
+   <span class="typing-text">ANTRE is processing...</span>
+  </div>
 
-    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
-    <script src="/static/app.js"></script>
+  <form id="chat-form" class="input-area">
+   <span class="input-caret">&gt;</span>
+   <input id="message-input" type="text" placeholder="Type a command, or hold the mic and speak..." autocomplete="off">
+   <button type="button" id="mic-btn" class="mic-btn" aria-label="Hold to talk"
+    title="HOLD TO TALK — press and hold, speak, release.">
+    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"
+     stroke-linecap="round" stroke-linejoin="round">
+     <rect x="9" y="2" width="6" height="12" rx="3" />
+     <path d="M5 10a7 7 0 0 0 14 0" />
+     <path d="M12 19v3" />
+    </svg>
+    <span class="mic-label" id="mic-label">HOLD TO TALK</span>
+   </button>
+   <button type="submit" aria-label="Send">
+    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.5"
+     stroke-linecap="round" stroke-linejoin="round">
+     <path d="M5 12h14M13 6l6 6-6 6" />
+    </svg>
+    <span>TRANSMIT</span>
+   </button>
+  </form>
+
+  <!-- Status bar -->
+  <footer class="statusbar">
+   <span id="sb-uptime">UPTIME --</span>
+   <span class="statusbar-sep">·</span>
+   <span id="sb-tools">TOOLS 0 ACTIVE</span>
+   <span class="statusbar-sep">·</span>
+   <span id="sb-auto">AUTO OFF</span>
+   <span class="statusbar-sep">·</span>
+   <span id="sb-mic">MIC --</span>
+   <span class="statusbar-sep">·</span>
+   <span id="sb-memory">MEMORY 0</span>
+   <span class="statusbar-sep">·</span>
+   <span id="sb-shots">SHOTS 0</span>
+   <span class="statusbar-sep">·</span>
+   <span id="sb-ctx">CTX --</span>
+  </footer>
+
+ </main>
+
+  <!-- ==========================================================
+      OS-STYLE POPUPS
+      ========================================================== -->
+
+ <!-- Permission dialog: pops when ANTRE needs your approval for a
+      tool call. Buttons, not text. -->
+ <div id="perm-modal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="perm-title">
+  <div class="modal-window">
+   <div class="modal-titlebar">
+    <span class="modal-title" id="perm-title">PERMISSION REQUIRED</span>
+    <button type="button" class="modal-close" id="perm-close" aria-label="Close">&times;</button>
+   </div>
+   <div class="modal-body">
+    <div class="perm-icon">
+     <svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="currentColor" stroke-width="1.6"
+      stroke-linecap="round" stroke-linejoin="round">
+      <path d="M12 2l8 3.5V11c0 5.2-3.4 9.4-8 11-4.6-1.6-8-5.8-8-11V5.5L12 2z" />
+      <path d="M12 8v5" />
+      <circle cx="12" cy="16.2" r="0.6" fill="currentColor" />
+     </svg>
+    </div>
+    <p class="perm-question">ANTRE requests permission to execute a system tool.</p>
+    <div class="perm-detail">
+     <div class="perm-row"><span class="perm-label">TOOL</span><span class="perm-value" id="perm-tool">&mdash;</span></div>
+     <div class="perm-row"><span class="perm-label">ARGS</span><span class="perm-value" id="perm-args">&mdash;</span></div>
+    </div>
+   </div>
+   <div class="modal-actions">
+    <button type="button" class="btn btn-deny" id="perm-deny">DENY</button>
+    <button type="button" class="btn btn-approve" id="perm-approve">APPROVE</button>
+   </div>
+  </div>
+ </div>
+
+ <!-- Screenshot viewer: big, centered popup for captures. -->
+ <div id="viewer-modal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-label="Screenshot viewer">
+  <div class="viewer-window">
+   <div class="viewer-top">
+    <span class="viewer-label">CAPTURE</span>
+    <span class="viewer-count" id="viewer-count"></span>
+    <button type="button" class="modal-close" id="viewer-close" aria-label="Close">&times;</button>
+   </div>
+   <div class="viewer-stage">
+    <button type="button" class="viewer-nav viewer-prev" id="viewer-prev" aria-label="Previous">&lsaquo;</button>
+    <img id="viewer-img" class="viewer-img" alt="Screenshot">
+    <button type="button" class="viewer-nav viewer-next" id="viewer-next" aria-label="Next">&rsaquo;</button>
+   </div>
+   <div class="viewer-foot">
+    <span class="viewer-caption" id="viewer-caption"></span>
+   </div>
+  </div>
+ </div>
+
+ <!-- Generic notice popup: errors, warnings, anything ANTRE deems important. -->
+ <div id="notice-modal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="notice-title">
+  <div class="modal-window notice-window">
+   <div class="modal-titlebar">
+    <span class="modal-title" id="notice-title">&#9888; ANTRE NOTICE</span>
+    <button type="button" class="modal-close" id="notice-close" aria-label="Close">&times;</button>
+   </div>
+   <div class="notice-body" id="notice-body"></div>
+   <div class="modal-actions">
+    <button type="button" class="btn btn-approve" id="notice-ok">ACKNOWLEDGE</button>
+   </div>
+  </div>
+ </div>
+
+
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+ <script src="/static/boot.js"></script>
+ <script src="/static/app.js"></script>
+
+
 </body>
 
 </html>
