@@ -1,0 +1,69 @@
+name: Build IPA
+
+# Builds the iOS companion app (antre-ios/) on EAS cloud and uploads the
+# resulting .ipa as a run artifact, ready to sideload with SideStore.
+#
+# Trigger it manually from the Actions tab, or it runs on push to main
+# when anything under antre-ios/ changes.
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['antre-ios/**']
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: antre-ios
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: antre-ios/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Setup Expo / EAS
+        uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      - name: EAS build (preview profile -> .ipa)
+        run: eas build --platform ios --profile preview --non-interactive --no-wait
+
+      - name: Get artifact URL
+        run: |
+          URL=$(eas build:list --platform ios --profile preview --limit 1 \
+            --non-interactive --json | jq -r '.[0].artifacts.buildUrl // empty')
+          if [ -n "$URL" ]; then
+            echo "IPA_URL=$URL" >> $GITHUB_ENV
+            echo "### 📦 Download your .ipa" >> $GITHUB_STEP_SUMMARY
+            echo "\`$URL\`" >> $GITHUB_STEP_SUMMARY
+            echo "Install it with SideStore on your iPhone." >> $GITHUB_STEP_SUMMARY
+          else
+            echo "No artifact URL yet — EAS is probably still building. Check the EAS dashboard: https://expo.dev/accounts"
+          fi
+
+      - name: Download and attach the .ipa to this run
+        run: |
+          if [ -n "$IPA_URL" ]; then
+            curl -sL "$IPA_URL" -o antre-remote.ipa
+            echo "saved $(ls -lh antre-remote.ipa | awk '{print $5}')"
+          fi
+
+      - name: Upload IPA artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: antre-remote-ipa
+          path: antre-ios/antre-remote.ipa
+          if-no-files-found: warn

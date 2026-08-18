@@ -49,10 +49,12 @@ class ModeRequest(BaseModel):
 
 @app.get("/", response_class=HTMLResponse)
 async def home(request: Request):
- return templates.TemplateResponse(
+ response = templates.TemplateResponse(
   request=request,
   name="index.html",
  )
+ response.headers["Cache-Control"] = "no-store"
+ return response
 
 
 @app.get("/monitor", response_class=HTMLResponse)
@@ -81,6 +83,8 @@ async def chat(data: ChatRequest):
 @app.post("/stt/start")
 async def stt_start():
  """Begin capturing the default microphone."""
+ if stt.listener.active:
+  return JSONResponse(status_code=409, content={"error": "hands-free mode is listening — turn it off first"})
  ok, err = await asyncio.to_thread(stt.recorder.start)
  if not ok:
   return JSONResponse(status_code=503, content={"error": err})
@@ -240,3 +244,66 @@ def _human_uptime(seconds: int) -> str:
  if m:
   return f"{m}m {s:02d}s"
  return f"{s}s"
+
+
+# ============================================================
+# HANDS-FREE VOICE (voice-activated listening + SSE feed)
+# ============================================================
+
+@app.post("/stt/listen")
+async def stt_listen_start():
+ """Start hands-free listening — speech is auto-detected, no button."""
+ if stt.recorder.recording:
+  return JSONResponse(
+   status_code=409,
+   content={"error": "hold-to-talk recording is in progress — release the mic first"},
+  )
+ ok, err = await asyncio.to_thread(stt.listener.start)
+ if not ok:
+  if "already" in err:
+   return {"listening": True}
+  return JSONResponse(status_code=503, content={"error": err})
+ return {"listening": True}
+
+
+@app.post("/stt/listen/stop")
+async def stt_listen_stop():
+ """Stop hands-free listening."""
+ await asyncio.to_thread(stt.listener.stop)
+ return {"listening": False}
+
+
+@app.get("/stt/listen/status")
+async def stt_listen_status():
+ """Current hands-free state: {"listening": bool, "state": str}."""
+ return {"listening": stt.listener.active, "state": stt.listener.state()}
+
+
+@app.get("/stt/events")
+async def stt_events():
+ """SSE feed — state changes and completed transcriptions."""
+ loop = asyncio.get_running_loop()
+ q = asyncio.Queue(maxsize=64)
+ stt.listener.subscribe(loop, q)
+
+ async def gen():
+  try:
+   yield "event: hello\ndata: {}\n\n"
+   while True:
+    try:
+     event = await asyncio.wait_for(q.get(), timeout=15)
+     yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
+    except asyncio.TimeoutError:
+     yield ": keepalive\n\n"
+  finally:
+   stt.listener.unsubscribe(q)
+
+ return StreamingResponse(
+  gen(),
+  media_type="text/event-stream",
+  headers={
+   "Cache-Control": "no-cache",
+   "X-Accel-Buffering": "no",
+   "Connection": "keep-alive",
+  },
+ )

@@ -16,13 +16,13 @@
  </style>
 
  <!-- Local stylesheet first so it is never starved by the font CSS -->
- <link rel="stylesheet" href="/static/styles.css">
+ <link rel="stylesheet" href="/static/styles.css?v=3">
 
  <!-- Reveal the page once the stylesheet has landed (script sits after
       the link so it can find it). Fail-safe: never leave the page blank. -->
  <script>
   (function () {
-   var link = document.querySelector('link[href="/static/styles.css"]');
+   var link = document.querySelector('link[href="/static/styles.css?v=3"]');
    var reveal = function () { document.documentElement.classList.add("css-ready"); };
    if (!link) { reveal(); return; }
    var loaded = false;
@@ -76,6 +76,56 @@
  <!-- HUD scanline overlay -->
  <div class="scanlines"></div>
  <div class="vignette"></div>
+
+ <div class="hud-layout">
+
+ <aside class="hud-rail rail-left" id="core-rail" aria-label="System status">
+  <div class="rail-head">
+   <span class="rail-title">CORE STATUS</span>
+   <span class="rail-glyph">&#9670;</span>
+  </div>
+  <div class="rail-body">
+   <div class="stat-block">
+    <span class="stat-label">UPTIME</span>
+    <span class="stat-value uptime" id="rail-uptime">--:--:--</span>
+   </div>
+   <div class="stat-grid">
+    <div class="stat-cell">
+     <span class="stat-label">MODE</span>
+     <span class="stat-value" id="rail-mode">AUTO OFF</span>
+    </div>
+    <div class="stat-cell">
+     <span class="stat-label">TOOLS</span>
+     <span class="stat-value" id="rail-tools">IDLE</span>
+    </div>
+    <div class="stat-cell">
+     <span class="stat-label">MEMORY</span>
+     <span class="stat-value" id="rail-memory">0</span>
+    </div>
+    <div class="stat-cell">
+     <span class="stat-label">SHOTS</span>
+     <span class="stat-value" id="rail-shots">0</span>
+    </div>
+    <div class="stat-cell">
+     <span class="stat-label">EVENTS</span>
+     <span class="stat-value" id="rail-events">0</span>
+    </div>
+    <div class="stat-cell">
+     <span class="stat-label">MIC</span>
+     <span class="stat-value" id="rail-mic">N/A</span>
+    </div>
+   </div>
+   <div class="rail-rule"></div>
+   <div class="stat-cell wide">
+    <span class="stat-label">CONVERSATION</span>
+    <span class="stat-value" id="rail-msgs">0 MSG</span>
+   </div>
+  </div>
+  <div class="rail-foot">
+   <span>CORE &middot; STABLE</span>
+   <span class="dot-on" title="SYSTEM ONLINE"></span>
+  </div>
+ </aside>
 
  <main class="app">
 
@@ -147,7 +197,7 @@
 
   <form id="chat-form" class="input-area">
    <span class="input-caret">&gt;</span>
-   <input id="message-input" type="text" placeholder="Type a command, or hold the mic and speak..." autocomplete="off">
+   <input id="message-input" type="text" placeholder="Type a command, hold the mic, or flip HANDS-FREE and just talk..." autocomplete="off">
    <button type="button" id="mic-btn" class="mic-btn" aria-label="Hold to talk"
     title="HOLD TO TALK — press and hold, speak, release.">
     <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"
@@ -157,6 +207,18 @@
      <path d="M12 19v3" />
     </svg>
     <span class="mic-label" id="mic-label">HOLD TO TALK</span>
+   </button>
+   <button type="button" id="handsfree-btn" class="handsfree-btn" aria-label="Hands-free"
+    title="HANDS-FREE - voice-activated. Toggle on and just talk; it auto-stops when you pause. Say &quot;I'm done&quot; to stand down.">
+    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"
+     stroke-linecap="round" stroke-linejoin="round">
+     <path d="M4 9v6" />
+     <path d="M8 6v12" />
+     <path d="M12 3v18" />
+     <path d="M16 6v12" />
+     <path d="M20 9v6" />
+    </svg>
+    <span class="handsfree-label" id="handsfree-label">HANDS-FREE</span>
    </button>
    <button type="submit" aria-label="Send">
     <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.5"
@@ -185,6 +247,22 @@
   </footer>
 
  </main>
+
+ <aside class="hud-rail rail-right" id="feed-rail" aria-label="Live activity feed">
+  <div class="rail-head">
+   <span class="rail-title">LIVE FEED</span>
+   <span class="feed-live">LIVE</span>
+  </div>
+  <div class="rail-body feed-list" id="feed-list">
+   <div class="feed-empty" id="feed-empty">NO ACTIVITY &mdash; STANDBY</div>
+  </div>
+  <div class="rail-foot">
+   <span>EVENT STREAM</span>
+   <span>SSE</span>
+  </div>
+ </aside>
+
+ </div>
 
   <!-- ==========================================================
       OS-STYLE POPUPS
@@ -254,11 +332,30 @@
  </div>
 
 
+<!-- Code viewer popup: full code blocks open here so nothing gets
+      cut off or dumped inline in the status line. -->
+ <div id="code-modal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="code-title">
+  <div class="modal-window code-window">
+   <div class="modal-titlebar">
+    <span class="modal-title" id="code-title">&#60;&#47;&#62; CODE</span>
+    <button type="button" class="modal-close" id="code-close" aria-label="Close">&times;</button>
+   </div>
+   <div class="code-body">
+    <pre class="code-pre" id="code-pre"><code id="code-content"></code></pre>
+   </div>
+   <div class="modal-actions">
+    <button type="button" class="btn btn-deny" id="code-ok">CLOSE</button>
+    <button type="button" class="btn btn-approve" id="code-copy">COPY</button>
+   </div>
+  </div>
+ </div>
+
 <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
  <script src="/static/boot.js"></script>
- <script src="/static/app.js"></script>
+ <script src="/static/app.js?v=3"></script>
 
 
-</body>
+ </body>
+
 
 </html>

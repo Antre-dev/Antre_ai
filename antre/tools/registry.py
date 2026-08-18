@@ -149,7 +149,7 @@ TOOL_DEFINITIONS = [
     "type": "function",
     "function": {
         "name": "run_ssh",
-        "description": "Run a command on a remote host over SSH (e.g. the homelab server). Requires user approval.",
+        "description": "Run a command on a remote host over SSH (e.g. the homelab server). In auto mode, only destructive commands require approval; read-only and routine commands run free.",
         "parameters": {
             "type": "object",
             "properties": {

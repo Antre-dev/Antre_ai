@@ -261,20 +261,29 @@ function setVoiceEnabled(enabled) {
     if (!enabled) stopSpeech();
 }
 
-async function speak(text) {
-    if (!voiceEnabled || !text) return;
-    stopSpeech();
-    // Strip markdown cruft so the neural voice reads clean prose
-    const clean = text
-        .replace(/```[\s\S]*?```/g, " code block omitted. ")
+// Voice reads only the FIRST SENTENCE of the reply — the full text
+// stays on the status line for reading, and permission text is never
+// spoken (the chime + modal are the cue).
+function voiceLine(text) {
+    const clean = String(text)
+        .replace(/```[\s\S]*?```/g, " ")
         .replace(/[#*`_>~|]/g, " ")
         .replace(/\[([^\]]+)\]\([^)]*\)/g, "$1")
         .replace(/\s+/g, " ")
-        .trim()
-        .slice(0, 2800);
-    if (!clean) return;
+        .trim();
+    if (!clean) return null;
+    const m = clean.match(/^.*?[.!?](?:\s|$)/);
+    const line = m ? m[0] : clean;
+    return line.slice(0, 160);
+}
+
+async function speak(text) {
+    if (!voiceEnabled || !text) return;
+    const line = voiceLine(text);
+    if (!line) return;
+    stopSpeech();
     try {
-        const res = await fetch(`/tts?text=${encodeURIComponent(clean)}`);
+        const res = await fetch(`/tts?text=${encodeURIComponent(line)}`);
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const blob = await res.blob();
         _currentAudio = new Audio(URL.createObjectURL(blob));
@@ -288,6 +297,80 @@ voiceToggle.addEventListener("click", () => setVoiceEnabled(!voiceEnabled));
 setVoiceEnabled(voiceEnabled);
 
 // ---------------------------------------------------------------
+// ---------------------------------------------------------------
+// Code viewer popup — code blocks open here, never inline
+// ---------------------------------------------------------------
+
+const codeModal = document.getElementById("code-modal");
+const codeTitle = document.getElementById("code-title");
+const codeContent = document.getElementById("code-content");
+const codeCopyBtn = document.getElementById("code-copy");
+let _lastCodeBlocks = [];
+
+// Split a reply into prose + fenced code blocks.
+// Returns { text, blocks: [{ lang, code }], title }.
+function splitCodeBlocks(text) {
+    const blocks = [];
+    const src = String(text || "");
+    const re = /```([^\n`]*)\n([\s\S]*?)```/g;
+    let m;
+    while ((m = re.exec(src)) !== null) {
+        blocks.push({
+            lang: (m[1] || "").trim(),
+            code: m[2].replace(/\n$/, ""),
+        });
+    }
+    const textOnly = src.replace(/```[^\n`]*\n[\s\S]*?```/g, " ")
+        .replace(/\s+/g, " ").trim();
+    return {
+        blocks,
+        text: textOnly,
+        title: blocks.length > 1 ? "CODE — " + blocks.length + " BLOCKS" : "CODE",
+    };
+}
+
+function codeEscape(s) {
+    const div = document.createElement("div");
+    div.textContent = s == null ? "" : String(s);
+    return div.innerHTML;
+}
+
+function showCode(title, blocks) {
+    if (!codeModal) return;
+    _lastCodeBlocks = blocks;
+    if (codeTitle) codeTitle.textContent = title || "CODE";
+    if (codeContent) {
+        codeContent.innerHTML = blocks.map((b) =>
+            '<span class="code-lang">' + codeEscape(b.lang || "code") + "</span>\n" +
+            codeEscape(b.code)
+        ).join("\n\n");
+    }
+    codeModal.classList.remove("hidden");
+    playChime("notice");
+    codeCopyBtn?.focus();
+}
+
+function hideCode() {
+    codeModal?.classList.add("hidden");
+}
+
+function copyCode() {
+    if (!_lastCodeBlocks.length) return;
+    const all = _lastCodeBlocks.map((b) => b.code).join("\n\n");
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(all).then(() => {
+            setStatus("CODE COPIED TO CLIPBOARD", "reply");
+        }).catch(() => {});
+    }
+}
+
+document.getElementById("code-close")?.addEventListener("click", hideCode);
+document.getElementById("code-ok")?.addEventListener("click", hideCode);
+codeCopyBtn?.addEventListener("click", copyCode);
+codeModal?.addEventListener("click", (event) => {
+    if (event.target === codeModal) hideCode();
+});
+
 // Response dispatch — everything ANTRE says lands here
 // ---------------------------------------------------------------
 
@@ -296,7 +379,17 @@ function handleAssistantResponse(text, images) {
     if (pending) {
         setStatus(`PERMISSION REQUIRED — ${pending.tool}`, "permission");
         showPermissionModal(pending.tool, pending.args);
-        speak(text);
+        return; // permissions stay silent — the chime + modal are the cue
+    }
+
+    // Code blocks never sit inline — they open in the code viewer popup,
+    // while the status line + voice keep the readable summary.
+    const split = splitCodeBlocks(text);
+    if (split.blocks.length) {
+        showCode(split.title, split.blocks);
+        setStatus(split.text || "CODE — OPENED IN VIEWER", "code");
+        speak(split.text || "Code opened in the viewer.");
+        if (images && images.length) openViewer(images, 0);
         return;
     }
 
@@ -466,6 +559,16 @@ document.addEventListener("keydown", (event) => {
 // Status bar / system status
 // ---------------------------------------------------------------
 
+// Left-rail telemetry elements (present on wide viewports)
+const railUptime = document.getElementById("rail-uptime");
+const railMode = document.getElementById("rail-mode");
+const railTools = document.getElementById("rail-tools");
+const railMemory = document.getElementById("rail-memory");
+const railShots = document.getElementById("rail-shots");
+const railEvents = document.getElementById("rail-events");
+const railMic = document.getElementById("rail-mic");
+const railMsgs = document.getElementById("rail-msgs");
+
 async function refreshStatus() {
     try {
         const response = await fetch("/api/status");
@@ -494,6 +597,25 @@ async function refreshStatus() {
             statusEl.classList.remove("working");
             txt.textContent = "SYSTEM ONLINE";
         }
+
+        // Left rail — core telemetry
+        if (railUptime) railUptime.textContent = s.uptime_human;
+        if (railMemory) railMemory.textContent = s.memory_entries;
+        if (railShots) railShots.textContent = s.screenshots;
+        if (railEvents) railEvents.textContent = s.activity_events;
+        if (railMsgs) railMsgs.textContent = `${s.history_messages} MSG`;
+        if (railMic) {
+            railMic.textContent = s.stt_available ? "OK" : "N/A";
+            railMic.classList.toggle("on", !!s.stt_available);
+        }
+        if (railTools) {
+            railTools.textContent = s.busy ? `${s.active_tools} ACTIVE` : "IDLE";
+            railTools.classList.toggle("busy", !!s.busy);
+        }
+        if (railMode) {
+            railMode.textContent = s.auto_mode ? "AUTO ON" : "AUTO OFF";
+            railMode.classList.toggle("on", !!s.auto_mode);
+        }
     } catch (error) {
         // ignore — status is best-effort
     }
@@ -519,6 +641,10 @@ function setModeUI(auto) {
     if (sbAuto) {
         sbAuto.textContent = auto ? "AUTO ON" : "AUTO OFF";
         sbAuto.classList.toggle("on", auto);
+    }
+    if (railMode) {
+        railMode.textContent = auto ? "AUTO ON" : "AUTO OFF";
+        railMode.classList.toggle("on", auto);
     }
 }
 
@@ -563,3 +689,286 @@ async function toggleMode() {
 
 modeToggle?.addEventListener("click", toggleMode);
 syncMode();
+
+
+
+// ============================================================
+// HANDS-FREE — voice-activated listening, no button to hold
+// Toggle it on, then just talk: it auto-starts on your voice,
+// auto-stops when you pause, and submits what you said.
+// Say "I'm done" to stand down.
+// ============================================================
+
+const hfBtn = document.getElementById("handsfree-btn");
+const hfLabel = document.getElementById("handsfree-label");
+const HF_KEY = "antre.handsfree.enabled";
+
+let handsFreeOn = false;
+let hfSource = null;
+
+// If the mic mangles the phrase, we still catch it:
+const HF_OFF_PHRASES = [
+    /(?:i'?m|im)\s+(?:done|through|three|free|finished)/i,
+    /that'?s\s+(?:it|all)/i,
+    /stand\s+by/i,
+    /go\s+(?:to\s+)?sleep/i,
+    /power\s+down/i,
+];
+
+function hfSetUI(on) {
+    handsFreeOn = on;
+    if (!hfBtn || !hfLabel) return;
+    hfBtn.classList.toggle("on", on);
+    hfLabel.textContent = on ? "JUST SPEAK" : "HANDS-FREE";
+    micBtn.disabled = on;
+    micBtn.classList.toggle("muted", on);
+    if (on) micLabel.textContent = "HANDS-FREE ACTIVE";
+    else micLabel.textContent = "HOLD TO TALK";
+}
+
+function hfOnState(state) {
+    if (state === "recording") setStatus("HEARD YOU — SPEAKING…", "listen");
+    else if (state === "transcribing") setStatus("PROCESSING SPEECH…", "listen");
+    else if (state === "listening") setStatus("HANDS-FREE — JUST SPEAK", "listen");
+    else if (state === "off") setStatus("HANDS-FREE STANDBY", "reply");
+}
+
+function hfOnTranscript(text) {
+    text = String(text || "").trim();
+    if (!text) return;
+    setStatus(`» ${text}`, "user");
+    if (HF_OFF_PHRASES.some((re) => re.test(text))) {
+        hfToggle(false); // user said "I'm done" — stand down
+        return;
+    }
+    submitText(text);
+}
+
+function hfAttachEvents() {
+    hfSource = new EventSource("/stt/events");
+    hfSource.onmessage = (e) => {
+        let ev;
+        try { ev = JSON.parse(e.data); } catch (_) { return; }
+        if (ev.type === "transcription") hfOnTranscript(ev.text);
+        else if (ev.type === "state") hfOnState(ev.state);
+    };
+    hfSource.onerror = () => setStatus("HANDS-FREE — RECONNECTING…", "warn");
+}
+
+async function hfStart() {
+    try {
+        const res = await fetch("/stt/listen", { method: "POST" });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+            setStatus("HANDS-FREE UNAVAILABLE", "error");
+            showNotice("⚠ HANDS-FREE UNAVAILABLE", data.error || `HTTP ${res.status}`);
+            return false;
+        }
+        hfAttachEvents();
+        setStatus("HANDS-FREE — JUST SPEAK", "listen");
+        return true;
+    } catch (err) {
+        console.error(err);
+        setStatus("HANDS-FREE UNAVAILABLE", "error");
+        return false;
+    }
+}
+
+function hfStop() {
+    if (hfSource) { hfSource.close(); hfSource = null; }
+    fetch("/stt/listen/stop", { method: "POST" }).catch(() => {});
+    setStatus("HANDS-FREE STANDBY", "reply");
+}
+
+async function hfToggle(force) {
+    const next = force !== undefined ? !!force : !handsFreeOn;
+    if (next === handsFreeOn) return handsFreeOn;
+    if (next) {
+        const started = await hfStart();
+        hfSetUI(started);
+    } else {
+        hfStop();
+        hfSetUI(false);
+    }
+    localStorage.setItem(HF_KEY, handsFreeOn ? "1" : "0");
+    return handsFreeOn;
+}
+
+hfBtn?.addEventListener("click", () => hfToggle());
+
+// Restore state if the page reloads while hands-free was on.
+(async () => {
+    try {
+        const res = await fetch("/stt/listen/status");
+        if (!res.ok) return;
+        const s = await res.json();
+        if (s.listening) {
+            hfAttachEvents();
+            hfSetUI(true);
+            setStatus("HANDS-FREE — JUST SPEAK", "listen");
+        }
+    } catch (_) { /* core unreachable — stay off */ }
+})();
+
+
+// ---------------------------------------------------------------
+// LIVE FEED — right rail activity stream (SSE)
+// ---------------------------------------------------------------
+
+const feedList = document.getElementById("feed-list");
+const feedEmpty = document.getElementById("feed-empty");
+const RAIL_CAT_ICON = {
+    terminal: "❯",
+    browser: "◈",
+    files: "✎",
+    memory: "◉",
+    search: "⌕",
+    chat: "▣",
+    system: "⚙",
+};
+
+function railEsc(s) {
+    const div = document.createElement("div");
+    div.textContent = s == null ? "" : String(s);
+    return div.innerHTML;
+}
+
+function railTime(ts) {
+    try {
+        return new Date(ts).toLocaleTimeString([], { hour12: false });
+    } catch {
+        return "";
+    }
+}
+
+function railArgsPreview(args) {
+    try {
+        const parsed = JSON.parse(args || "{}");
+        const keys = Object.keys(parsed);
+        if (!keys.length) return "";
+        const k = keys[0];
+        let v = String(parsed[k]);
+        if (v.length > 42) v = v.slice(0, 42) + "…";
+        return `${k}=${v}`;
+    } catch {
+        return "";
+    }
+}
+
+function railResultPreview(result) {
+    if (!result) return "";
+    let s = String(result);
+    try {
+        const parsed = JSON.parse(result);
+        if (parsed && typeof parsed === "object") {
+            const pick = parsed.title || parsed.summary || parsed.message || parsed.response;
+            if (pick) s = String(pick);
+        }
+    } catch { /* raw */ }
+    if (s.length > 56) s = s.slice(0, 56) + "…";
+    return s;
+}
+
+function railSummary(event) {
+    switch (event.type) {
+        case "tool.start":
+            return railArgsPreview(event.args) || "RUNNING";
+        case "tool.done": {
+            const parts = [];
+            if (event.duration_ms != null) {
+                parts.push(event.duration_ms < 1000
+                    ? `${event.duration_ms}ms`
+                    : `${(event.duration_ms / 1000).toFixed(2)}s`);
+            }
+            if (event.url) parts.push(event.url);
+            else {
+                const res = railResultPreview(event.result);
+                if (res) parts.push(res);
+            }
+            if (!parts.length) parts.push(event.status === "ok" ? "OK" : "ERROR");
+            return parts.join(" · ");
+        }
+        case "permission":
+            return "WAITING APPROVAL";
+        case "tool.cancel":
+            return "CANCELLED";
+        case "chat":
+            return String(event.content || "").slice(0, 56)
+                + (String(event.content || "").length > 56 ? "…" : "");
+        case "mode":
+            return event.mode === "auto" ? "AUTO ENGAGED" : "MANUAL RESTORED";
+        default:
+            return "";
+    }
+}
+
+function railLabel(event) {
+    if (event.tool) return event.tool;
+    if (event.type === "mode") return "AUTO MODE";
+    if (event.type === "chat") return event.role === "user" ? "YOU" : "ANTRE";
+    return event.type || "";
+}
+
+function railStatusMeta(event) {
+    const raw = event.status ||
+        (event.type === "chat" ? "chat" :
+         event.type === "mode" ? "mode" :
+         event.type === "tool.start" ? "run" :
+         event.type === "permission" ? "wait" :
+         event.type === "tool.cancel" ? "cancel" : "");
+    const map = { ok: "ok", error: "err", running: "run", waiting: "wait", cancelled: "cancel" };
+    const cls = map[raw] || raw;
+    const txt = { ok: "OK", err: "ERR", run: "RUN", wait: "WAIT", cancel: "X", chat: "MSG", mode: "SYS" }[cls]
+        || String(raw).toUpperCase();
+    return { cls, txt };
+}
+
+function addFeedEvent(event) {
+    if (!feedList) return;
+    const id = event.id;
+    if (id != null && feedList.querySelector(`[data-id="${id}"]`)) return;
+    if (feedEmpty && feedEmpty.isConnected) feedEmpty.remove();
+
+    const meta = railStatusMeta(event);
+    const el = document.createElement("div");
+    el.className = `feed-item ${meta.cls}`;
+    if (id != null) el.dataset.id = id;
+
+    const icon = RAIL_CAT_ICON[event.category] || "·";
+    el.innerHTML =
+        `<div class="feed-top">` +
+            `<span class="feed-icon">${icon}</span>` +
+            `<span class="feed-name">${railEsc(railLabel(event).toUpperCase())}</span>` +
+            `<span class="feed-status ${meta.cls}">${meta.txt}</span>` +
+        `</div>` +
+        `<div class="feed-sub">${railEsc(railSummary(event))}</div>` +
+        `<div class="feed-ts">${railEsc(railTime(event.ts))}</div>`;
+
+    feedList.prepend(el);
+    while (feedList.children.length > 14) {
+        feedList.lastElementChild.remove();
+    }
+}
+
+async function initFeedRail() {
+    if (!feedList) return;
+    // Seed with recent history so the rail is populated on load.
+    try {
+        const res = await fetch("/activity/history?limit=14");
+        if (res.ok) {
+            const data = await res.json();
+            for (const ev of (data.events || []).slice().reverse()) addFeedEvent(ev);
+        }
+    } catch (_) { /* best effort */ }
+
+    // Live updates via the same SSE the monitor uses.
+    const source = new EventSource("/activity/stream");
+    source.onmessage = (e) => {
+        let ev;
+        try { ev = JSON.parse(e.data); } catch (_) { return; }
+        if (!ev || !ev.type) return;
+        addFeedEvent(ev);
+    };
+}
+
+initFeedRail();

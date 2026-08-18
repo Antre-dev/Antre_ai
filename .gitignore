@@ -16,6 +16,18 @@ antre/memory.json
 
 # Runtime logs
 logs/
+*.log
 
 # Screenshots
 screenshots/
+
+# Staging / one-off scripts
+staging/
+
+# Presentation video (large binaries — keep local only)
+antre_video/
+
+# OS / editor junk
+.DS_Store
+.idea/
+.vscode/

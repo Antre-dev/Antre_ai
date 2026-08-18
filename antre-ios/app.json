@@ -1,0 +1,25 @@
+{
+  "expo": {
+    "name": "Antre Remote",
+    "slug": "antre-remote",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "scheme": "antre",
+    "userInterfaceStyle": "dark",
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.antre.remote",
+      "infoPlist": {
+        "NSFaceIDUsageDescription": "Antre Remote uses Face ID to confirm that you approve sensitive actions on your laptop."
+      }
+    },
+    "android": {
+      "package": "com.antre.remote"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-local-authentication",
+      "expo-secure-store"
+    ]
+  }
+}
